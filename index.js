@@ -391,7 +391,7 @@
 
 })();
 // ============================================
-// МИНИ-КАРТА (ФИНАЛЬНАЯ СТАБИЛЬНАЯ ВЕРСИЯ)
+// МИНИ-КАРТА (С РАСТЯГИВАНИЕМ ФОТО)
 // ============================================
 
 (function() {
@@ -405,7 +405,7 @@
   var zoomInBtn = document.getElementById('map-zoom-in');
   var zoomOutBtn = document.getElementById('map-zoom-out');
 
-  // Создаём обёртку для содержимого (только 1 раз)
+  // Создаём обёртку (только 1 раз)
   if (!document.getElementById('map-wrapper')) {
     var wrapper = document.createElement('div');
     wrapper.id = 'map-wrapper';
@@ -415,14 +415,12 @@
     content.id = 'map-content';
     content.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;transform-origin:center center;';
     
-    // Перемещаем картинку и контейнер точек в content
     mapContainer.insertBefore(wrapper, mapImage);
     wrapper.appendChild(content);
     content.appendChild(mapImage);
     content.appendChild(pointsContainer);
   }
 
-  // Получаем ссылки на созданные элементы
   var content = document.getElementById('map-content');
 
   // Индикатор зума
@@ -437,10 +435,9 @@
   var isMapOpen = false;
   var zoomLevel = 1;
   var maxZoom = 3;
-  var minZoom = 1;
+  var minZoom = 1; // 100% - фото полностью заполняет карту
   var zoomStep = 0.1;
 
-  // КЭШ ДЛЯ ТОЧЕК - сохраняем один раз и переиспользуем
   var cachedPoints = null;
   var cachedSceneId = null;
 
@@ -454,13 +451,11 @@
     isMapOpen = !isMapOpen;
     mapContainer.classList.toggle('open', isMapOpen);
     if (isMapOpen) {
-      // ОТРИСОВЫВАЕМ ТОЧКИ ТОЛЬКО ЕСЛИ ИЗМЕНИЛАСЬ СЦЕНА ИЛИ ПЕРВЫЙ РАЗ
       var currentId = getCurrentSceneId();
       if (cachedSceneId !== currentId || cachedPoints === null) {
         updateMapPoints();
         cachedSceneId = currentId;
       } else {
-        // Просто показываем уже существующие точки
         showExistingPoints();
       }
       resetZoom();
@@ -468,7 +463,6 @@
     }
   }
 
-  // Закрытие по клику вне карты
   document.addEventListener('click', function(e) {
     if (isMapOpen && 
         !mapContainer.contains(e.target) && 
@@ -485,27 +479,23 @@
     var currentId = getCurrentSceneId();
     
     points.forEach(function(point) {
-      // Обновляем активный класс
       point.classList.remove('active');
       if (point.dataset.sceneId === currentId) {
         point.classList.add('active');
       }
-      // Делаем видимыми
       point.style.opacity = '1';
       point.style.animation = 'none';
     });
   }
 
-  // ===== ОТРИСОВКА ТОЧЕК (с кэшированием) =====
+  // ===== ОТРИСОВКА ТОЧЕК =====
   function updateMapPoints() {
     var scenes = window.APP_DATA.scenes;
     var currentSceneId = getCurrentSceneId();
 
-    // СОХРАНЯЕМ В КЭШ
     cachedPoints = [];
     cachedSceneId = currentSceneId;
 
-    // Очищаем контейнер
     pointsContainer.innerHTML = '';
 
     scenes.forEach(function(sceneData, index) {
@@ -516,42 +506,31 @@
       point.dataset.sceneId = sceneData.id;
       point.dataset.index = index;
       
-      // Активная точка
       if (sceneData.id === currentSceneId) {
         point.classList.add('active');
       }
 
-      // Позиция в ПРОЦЕНТАХ
       point.style.left = sceneData.mapPosition.x + '%';
       point.style.top = sceneData.mapPosition.y + '%';
 
-      // Сохраняем координаты
       point.dataset.x = sceneData.mapPosition.x;
       point.dataset.y = sceneData.mapPosition.y;
 
-      // Подпись
       var label = document.createElement('span');
       label.className = 'point-label';
       label.textContent = sceneData.name;
       point.appendChild(label);
 
-      // Переход по клику
       point.addEventListener('click', function(e) {
         e.stopPropagation();
         switchToScene(sceneData.id);
-        // Обновляем активную точку без перерисовки всех
         updateActivePoint(sceneData.id);
-        // Закрываем карту после перехода (опционально)
-        // mapContainer.classList.remove('open');
-        // isMapOpen = false;
       });
 
-      // Задержка для анимации (только при первом создании)
       point.style.animationDelay = (0.1 + index * 0.08) + 's';
       
       pointsContainer.appendChild(point);
       
-      // Сохраняем в кэш
       cachedPoints.push({
         id: sceneData.id,
         element: point
@@ -574,7 +553,11 @@
   // ===== МАСШТАБИРОВАНИЕ =====
   function setZoom(level) {
     zoomLevel = Math.min(Math.max(level, minZoom), maxZoom);
+    
+    // При 100% (zoomLevel = 1) фото уже растянуто через object-fit: cover
+    // При зуме > 1 - увеличиваем
     content.style.transform = 'scale(' + zoomLevel + ')';
+    
     updateZoomIndicator();
   }
 
@@ -600,7 +583,6 @@
     setZoom(zoomLevel - zoomStep);
   });
 
-  // Колесико мыши
   mapContainer.addEventListener('wheel', function(e) {
     if (!isMapOpen) return;
     e.preventDefault();
@@ -610,7 +592,6 @@
     setZoom(zoomLevel + delta);
   }, { passive: false });
 
-  // Двойной клик - сброс
   mapContainer.addEventListener('dblclick', function(e) {
     e.stopPropagation();
     resetZoom();
@@ -634,16 +615,14 @@
     }
   }
 
-  // ===== НАБЛЮДАТЕЛЬ ЗА СМЕНОЙ СЦЕНЫ =====
+  // ===== НАБЛЮДАТЕЛЬ =====
   var observer = new MutationObserver(function() {
     var newId = getCurrentSceneId();
     if (newId !== cachedSceneId) {
-      // Сцена изменилась - обновляем активную точку
       if (isMapOpen) {
         updateActivePoint(newId);
         cachedSceneId = newId;
       } else {
-        // Если карта закрыта, просто запоминаем новую сцену
         cachedSceneId = newId;
       }
     }
@@ -659,15 +638,16 @@
     });
   }
 
-  // ===== ПЕРВИЧНАЯ ИНИЦИАЛИЗАЦИЯ =====
+  // ===== ИНИЦИАЛИЗАЦИЯ =====
   setTimeout(function() {
     var currentId = getCurrentSceneId();
     cachedSceneId = currentId;
     updateMapPoints();
     resetZoom();
-    console.log('🗺️ Мини-карта инициализирована (стабильная версия)');
-    console.log('✓ Точки кэшируются и НЕ пересоздаются при каждом открытии');
-    console.log('✓ Активная точка обновляется без перерисовки всех точек');
+    console.log('🗺️ Мини-карта готова!');
+    console.log('✓ Фото растягивается на всю карту при 100%');
+    console.log('✓ При зуме > 100% - приближается');
+    console.log('✓ При зуме = 100% - фото полностью заполняет карту');
   }, 100);
 
 })();
